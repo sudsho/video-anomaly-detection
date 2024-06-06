@@ -1,0 +1,39 @@
+# default training / inference config
+seed: 42
+
+data:
+  root: data/raw/UCSD_Anomaly_Dataset/UCSDped2
+  clip_len: 16
+  stride: 8
+  img_size: 112
+  mean: [0.43216, 0.394666, 0.37645]
+  std: [0.22803, 0.22145, 0.216989]
+  num_workers: 4
+
+model:
+  arch: c3d            # c3d | i3d | autoencoder
+  num_classes: 2       # normal / anomaly for supervised
+  dropout: 0.5
+  in_channels: 3
+
+train:
+  batch_size: 16
+  epochs: 30
+  lr: 1.0e-4
+  weight_decay: 1.0e-4
+  optimizer: adam
+  amp: true
+  log_interval: 20
+  ckpt_dir: checkpoints
+
+eval:
+  metric: frame_auc
+  agg: max          # how to aggregate clip score to frame score
+
+infer:
+  device: cuda
+  threshold: 0.6
+
+mlflow:
+  experiment: video-anomaly
+  tracking_uri: file:./mlruns
