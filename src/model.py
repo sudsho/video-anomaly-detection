@@ -1,7 +1,8 @@
 """3D CNN models for video anomaly detection.
 
-Two heads are exposed:
-- C3D supervised classifier (Tran et al. 2015, modernized)
+Heads exposed:
+- C3D supervised classifier (Tran et al. 2015, BN added)
+- I3D-style inflated inception block (light, not full I3D)
 - 3D conv autoencoder (unsupervised, reconstruction error -> anomaly score)
 """
 from __future__ import annotations
@@ -23,10 +24,7 @@ def _conv_block(in_c: int, out_c: int, pool: bool = True, pool_t: bool = True) -
 
 
 class C3D(nn.Module):
-    """Tran et al. 2015 C3D, BN added.
-
-    Input shape: (B, 3, T, H, W). Default T=16, H=W=112.
-    """
+    """Tran et al. 2015 C3D, BN added. Input (B, 3, T, H, W) with T=16, H=W=112."""
 
     def __init__(self, num_classes: int = 2, dropout: float = 0.5) -> None:
         super().__init__()
@@ -51,3 +49,34 @@ class C3D(nn.Module):
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         h = self.features(x)
         return self.classifier(h)
+
+
+class I3DLite(nn.Module):
+    """Tiny I3D-style classifier. Inflated 3x3x3 convs + global avg pool head.
+
+    Far smaller than the Carreira-Zisserman 2017 net but useful for quick
+    baselines on UCSD Ped2 (small training set).
+    """
+
+    def __init__(self, num_classes: int = 2, dropout: float = 0.3) -> None:
+        super().__init__()
+        self.stem = nn.Sequential(
+            nn.Conv3d(3, 64, kernel_size=(7, 7, 7), stride=(1, 2, 2), padding=(3, 3, 3)),
+            nn.BatchNorm3d(64),
+            nn.ReLU(inplace=True),
+            nn.MaxPool3d(kernel_size=(1, 3, 3), stride=(1, 2, 2), padding=(0, 1, 1)),
+        )
+        self.body = nn.Sequential(
+            _conv_block(64, 128),
+            _conv_block(128, 256),
+            _conv_block(256, 512),
+        )
+        self.head = nn.Sequential(
+            nn.AdaptiveAvgPool3d(1),
+            nn.Flatten(),
+            nn.Dropout(dropout),
+            nn.Linear(512, num_classes),
+        )
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        return self.head(self.body(self.stem(x)))
