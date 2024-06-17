@@ -80,3 +80,37 @@ class I3DLite(nn.Module):
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         return self.head(self.body(self.stem(x)))
+
+
+class ConvAE3D(nn.Module):
+    """3D convolutional autoencoder for unsupervised anomaly scoring.
+
+    Trained on normal clips only; reconstruction error rises on anomalies.
+    Hasan et al. 2016 style, slimmed.
+    """
+
+    def __init__(self, in_channels: int = 3) -> None:
+        super().__init__()
+        self.encoder = nn.Sequential(
+            nn.Conv3d(in_channels, 64, kernel_size=3, padding=1), nn.ReLU(inplace=True),
+            nn.MaxPool3d((1, 2, 2)),
+            nn.Conv3d(64, 128, kernel_size=3, padding=1), nn.ReLU(inplace=True),
+            nn.MaxPool3d((2, 2, 2)),
+            nn.Conv3d(128, 256, kernel_size=3, padding=1), nn.ReLU(inplace=True),
+            nn.MaxPool3d((2, 2, 2)),
+        )
+        self.decoder = nn.Sequential(
+            nn.ConvTranspose3d(256, 128, kernel_size=(2, 2, 2), stride=(2, 2, 2)),
+            nn.ReLU(inplace=True),
+            nn.ConvTranspose3d(128, 64, kernel_size=(2, 2, 2), stride=(2, 2, 2)),
+            nn.ReLU(inplace=True),
+            nn.ConvTranspose3d(64, in_channels, kernel_size=(1, 2, 2), stride=(1, 2, 2)),
+        )
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        return self.decoder(self.encoder(x))
+
+    def reconstruction_error(self, x: torch.Tensor) -> torch.Tensor:
+        """Per-clip MSE in (B,) shape; higher means more anomalous."""
+        x_hat = self.forward(x)
+        return ((x_hat - x) ** 2).mean(dim=(1, 2, 3, 4))
