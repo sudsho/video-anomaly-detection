@@ -38,12 +38,21 @@ def load_model(ckpt: str, num_classes: int = 2, device: str = "cpu") -> Tuple[to
 
 
 def stream_clips(video_path: str, clip_len: int = 16, stride: int = 8) -> Iterator[Tuple[int, np.ndarray]]:
-    """Yield (start_frame_idx, clip[T,H,W,3] uint8). Uses decord."""
+    """Yield (start_frame_idx, clip[T,H,W,3] uint8). Uses decord.
+
+    Handles short videos by zero-padding the last clip (rather than dropping).
+    """
     import decord
     decord.bridge.set_bridge("native")
     vr = decord.VideoReader(video_path)
     n = len(vr)
-    for s in range(0, max(1, n - clip_len + 1), stride):
+    if n == 0:
+        return
+    if n < clip_len:
+        idxs = list(range(n)) + [n - 1] * (clip_len - n)
+        yield 0, vr.get_batch(idxs).asnumpy()
+        return
+    for s in range(0, n - clip_len + 1, stride):
         idxs = list(range(s, s + clip_len))
         yield s, vr.get_batch(idxs).asnumpy()
 
