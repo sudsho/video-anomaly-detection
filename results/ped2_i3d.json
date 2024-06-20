@@ -1,0 +1,11 @@
+{
+  "dataset": "UCSD Ped2",
+  "split": "test",
+  "model": "i3d-lite",
+  "clip_len": 16,
+  "stride": 8,
+  "frame_auc": 0.941,
+  "epochs": 30,
+  "batch_size": 16,
+  "notes": "trained from scratch; slightly better than C3D, training is ~1.4x faster per epoch on a single A10G"
+}

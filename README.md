@@ -16,9 +16,13 @@ Eval target: frame-level AUC-ROC on UCSD Ped2 / ShanghaiTech (public).
 
 scaffolding repo, more soon
 
-## First numbers
+## Results (frame AUC on UCSD Ped2 test)
 
-C3D baseline on UCSD Ped2 test split: frame AUC = 0.926 (16-frame clips, stride 8).
-Unsupervised 3D conv autoencoder (normal-only train): 0.872.
-See `results/ped2_baseline.json`.
+| arch        | frame AUC | params | notes                                        |
+|-------------|-----------|--------|----------------------------------------------|
+| C3D         | 0.926     | 35M    | 16-frame clips, stride 8                     |
+| I3D-lite    | 0.941     | 11M    | smaller, ~1.4x faster per epoch              |
+| ConvAE3D    | 0.872     |  4M    | unsupervised, normal-only train              |
+
+See `results/ped2_baseline.json`, `results/ped2_i3d.json`.
 
