@@ -77,11 +77,25 @@ def main() -> None:
     device = "cuda" if torch.cuda.is_available() else "cpu"
     arch = cfg["model"]["arch"].lower()
     model = build_model(arch, cfg["model"]["num_classes"]).to(device)
-    opt = torch.optim.Adam(
-        model.parameters(),
-        lr=cfg["train"]["lr"],
-        weight_decay=cfg["train"]["weight_decay"],
-    )
+    opt_name = cfg["train"].get("optimizer", "adam").lower()
+    if opt_name == "adamw":
+        opt = torch.optim.AdamW(
+            model.parameters(),
+            lr=cfg["train"]["lr"],
+            weight_decay=cfg["train"]["weight_decay"],
+        )
+    else:
+        opt = torch.optim.Adam(
+            model.parameters(),
+            lr=cfg["train"]["lr"],
+            weight_decay=cfg["train"]["weight_decay"],
+        )
+
+    sched = None
+    if cfg["train"].get("scheduler") == "cosine":
+        sched = torch.optim.lr_scheduler.CosineAnnealingLR(
+            opt, T_max=cfg["train"]["epochs"]
+        )
 
     is_ae = arch in ("autoencoder", "ae", "convae3d")
     crit_cls = nn.CrossEntropyLoss(ignore_index=-1)
@@ -111,9 +125,12 @@ def main() -> None:
             running += float(loss.detach())
             if step % cfg["train"]["log_interval"] == 0:
                 print(f"epoch {epoch} step {step} loss {loss.item():.4f}")
+        if sched is not None:
+            sched.step()
         avg = running / max(1, len(loader))
         if use_mlflow:
             mlflow.log_metric("train_loss", avg, step=epoch)
+            mlflow.log_metric("lr", opt.param_groups[0]["lr"], step=epoch)
         print(f"epoch {epoch} done in {time.time() - t0:.1f}s avg loss {avg:.4f}")
 
     os.makedirs(cfg["train"]["ckpt_dir"], exist_ok=True)
