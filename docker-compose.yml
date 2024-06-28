@@ -1,0 +1,39 @@
+version: "3.9"
+
+services:
+  api:
+    build: .
+    image: video-anomaly:dev
+    container_name: vad-api
+    env_file:
+      - .env
+    environment:
+      - VAD_CONFIG=configs/default.yaml
+      - VAD_CKPT=/app/checkpoints/model.pt
+    volumes:
+      - ./checkpoints:/app/checkpoints:ro
+      - ./configs:/app/configs:ro
+    ports:
+      - "8000:8000"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request,sys;sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/health').status==200 else 1)"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  ui:
+    image: video-anomaly:dev
+    container_name: vad-ui
+    depends_on:
+      - api
+    command: ["streamlit", "run", "streamlit_app.py", "--server.address=0.0.0.0", "--server.port=8501"]
+    environment:
+      - VAD_CONFIG=configs/default.yaml
+      - VAD_CKPT=/app/checkpoints/model.pt
+    volumes:
+      - ./checkpoints:/app/checkpoints:ro
+      - ./configs:/app/configs:ro
+    ports:
+      - "8501:8501"
+    restart: unless-stopped
