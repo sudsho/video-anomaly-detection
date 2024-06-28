@@ -1,0 +1,37 @@
+# Example GitHub Actions workflow. Move to .github/workflows/test.yml when
+# the repo's gh token has the `workflow` scope.
+name: tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.11"]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: setup python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: "pip"
+
+      - name: install
+        run: |
+          python -m pip install --upgrade pip
+          # CPU-only torch is enough for unit tests on CI
+          pip install torch==2.2.0 torchvision==0.17.0 --index-url https://download.pytorch.org/whl/cpu
+          pip install fastapi==0.110.0 uvicorn==0.29.0 pydantic==2.6.4 \
+                      opencv-python-headless==4.9.0.80 pyyaml==6.0.1 \
+                      scikit-learn==1.4.1.post1 pytest==8.1.1 numpy==1.26.4 \
+                      python-multipart==0.0.9
+
+      - name: pytest
+        run: pytest -q tests/test_data.py tests/test_model.py
