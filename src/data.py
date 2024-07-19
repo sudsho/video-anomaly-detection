@@ -1,8 +1,8 @@
-"""Video clip dataset built on top of decord.
+"""Video clip dataset.
 
-UCSD Ped2 / ShanghaiTech are stored as numbered frame folders. We treat each
-training clip as `clip_len` consecutive frames sampled with `stride`.
-Decord is much faster than PyAV/OpenCV for sequential clip reads.
+UCSD Ped2 / ShanghaiTech are stored as numbered frame folders. Frame folders
+are read one image at a time via OpenCV. Packed .avi/.mp4 inputs use decord.
+Each clip is `clip_len` consecutive frames sampled with `stride`.
 """
 from __future__ import annotations
 

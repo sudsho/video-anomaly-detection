@@ -13,6 +13,8 @@ train:
 
 eval:
 	$(PY) -m src.eval --config configs/default.yaml --ckpt checkpoints/model.pt --gt-root data/raw/UCSD_Anomaly_Dataset/UCSDped2/Test
+	# note: eval assumes data.root in the config points at the Test split (with per-video frame folders).
+	# The --gt-root arg only supplies frame-level labels; scores are built from data.root.
 
 serve:
 	uvicorn src.api.main:app --host 0.0.0.0 --port 8000

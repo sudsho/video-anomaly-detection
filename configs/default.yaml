@@ -2,19 +2,17 @@
 seed: 42
 
 data:
-  root: data/raw/UCSD_Anomaly_Dataset/UCSDped2
+  # loader expects `root` to contain per-video frame folders directly,
+  # so point at the Train (or Test) split rather than the dataset root.
+  root: data/raw/UCSD_Anomaly_Dataset/UCSDped2/Train
   clip_len: 16
   stride: 8
   img_size: 112
-  mean: [0.43216, 0.394666, 0.37645]
-  std: [0.22803, 0.22145, 0.216989]
   num_workers: 4
 
 model:
   arch: c3d            # c3d | i3d | autoencoder
   num_classes: 2       # normal / anomaly for supervised
-  dropout: 0.5
-  in_channels: 3
 
 train:
   batch_size: 16
@@ -26,10 +24,8 @@ train:
   log_interval: 20
   ckpt_dir: checkpoints
   scheduler: cosine
-  warmup_epochs: 2
 
 eval:
-  metric: frame_auc
   agg: max          # how to aggregate clip score to frame score
 
 infer:

@@ -1,39 +1,37 @@
 # video-anomaly-detection
 
-Surveillance-grade video anomaly detection with 3D CNNs. Frame-level AUC-ROC evaluation, FastAPI scoring service, Streamlit demo, AWS ECS deployment.
+Reference implementation of a 3D-CNN video anomaly scoring pipeline (data loader, models, FastAPI scoring service, Streamlit demo). Reproducing published UCSD Ped2 / ShanghaiTech numbers with this repo would require additional training-label plumbing that is not implemented here.
 
 ## Problem
 
-Pedestrian/vehicle areas under fixed CCTV (UCSD Ped2, ShanghaiTech). Treat each short window of frames as a clip; score each clip 0-1 (or by reconstruction error); aggregate clip scores onto frames; trigger an alert when a frame's score crosses threshold.
+Pedestrian/vehicle areas under fixed CCTV (UCSD Ped2, ShanghaiTech). Treat each short window of frames as a clip; score each clip; aggregate clip scores onto frames; trigger an alert when a frame score crosses threshold.
 
 ## Datasets
 
-- **UCSD Ped2** (public): 16 training videos (normal only), 12 test videos with frame-level ground truth in `_gt` folders. Anomalies: bikes, skateboards, carts on a pedestrian walkway.
+- **UCSD Ped2** (public): 16 training videos (normal only), 12 test videos with frame-level ground truth in `_gt` folders.
 - **ShanghaiTech Campus** (public): 13 scenes, larger and more diverse. Same loader works once you point `data.root` at it.
 
-Loader handles both per-frame folders and packed `.avi/.mp4` via decord.
+The dataset loader walks a directory of per-video frame folders (`.tif/.jpg/.png`). A separate code path in `predict.py` and the API reads packed `.mp4/.avi` inputs via decord for streaming inference on a single video file.
 
 ## Approach
 
-Three model heads, same data path:
+Three model heads are implemented in `src/model.py`:
 
-| arch        | type           | trains on        | scoring                  |
-|-------------|----------------|------------------|--------------------------|
-| C3D         | supervised     | normal+anomaly   | softmax prob of anomaly  |
-| I3D-lite    | supervised     | normal+anomaly   | softmax prob of anomaly  |
-| ConvAE3D    | unsupervised   | normal only      | clip-level MSE           |
+| arch      | type          | scoring                 |
+|-----------|---------------|-------------------------|
+| C3D       | supervised    | softmax prob of anomaly |
+| I3D-lite  | supervised    | softmax prob of anomaly |
+| ConvAE3D  | unsupervised  | clip-level MSE          |
 
-Clip = 16 frames @ 112x112, stride 8. AdamW, cosine LR, AMP, MLflow tracking.
+Clip = 16 frames @ 112x112, stride 8. AdamW, cosine LR, AMP.
 
 Frame-level scores are obtained by tiling clip scores back over their constituent frames and taking the max (configurable to mean).
 
-## Results (frame AUC, UCSD Ped2 test)
+Note: only the unsupervised ConvAE3D path can be trained end-to-end from the shipped code and configs. The supervised C3D / I3D-lite heads compile and forward correctly, but no training-label loader is wired into `train.py`, so training them would require adding a labels source. Frame-level labels for the Ped2 test split are available via `src/labels.py` for evaluation only.
 
-| arch        | frame AUC | params | notes                              |
-|-------------|-----------|--------|------------------------------------|
-| C3D         | 0.926     | 35M    | 30 epochs, batch 16                |
-| I3D-lite    | 0.941     | 11M    | smaller, ~1.4x faster per epoch    |
-| ConvAE3D    | 0.872     |  4M    | unsupervised, normal-only training |
+## Results
+
+No benchmark run is checked into this repo. No trained checkpoints, no MLflow logs, no per-frame score arrays are included. Anything you see quoted online for C3D / I3D on Ped2 is from external papers, not from this codebase.
 
 ## Architecture
 
@@ -61,17 +59,17 @@ threshold -> alert
 video-anomaly-detection/
   configs/default.yaml
   src/
-    data.py           # decord reader, VideoClipDataset
+    data.py           # frame-folder + decord video reader, VideoClipDataset
     transforms.py     # ClipTransform
     model.py          # C3D, I3DLite, ConvAE3D
-    labels.py         # UCSD Ped2 frame-level GT loader
-    train.py          # cosine LR, AMP, MLflow
+    labels.py         # UCSD Ped2 frame-level GT loader (eval only)
+    train.py          # cosine LR, AMP, optional MLflow
     eval.py           # frame-level AUC-ROC
     predict.py        # streaming inference cli
     api/main.py       # FastAPI /score_clip
-  streamlit_app.py    # demo: upload video, see score timeline
+  streamlit_app.py    # demo: upload video, see clip score
   notebooks/eda.ipynb
-  tests/              # pytest: data, model, api smoke
+  tests/
   deploy/             # ECS task def + notes
   ci/test.yml.example
   Dockerfile
@@ -86,18 +84,14 @@ video-anomaly-detection/
 
 ```bash
 make install
-# download UCSD Ped2 manually into data/raw/UCSD_Anomaly_Dataset/UCSDped2
+# download UCSD Ped2 manually. The loader expects `data.root` to contain
+# per-video frame folders directly, so point it at the Train or Test split:
+# data/raw/UCSD_Anomaly_Dataset/UCSDped2/Train
 
-# train C3D
+# train (only ConvAE3D trains end-to-end from configs/default.yaml today)
 python -m src.train --config configs/default.yaml
 
-# evaluate frame AUC
-python -m src.eval \
-    --config configs/default.yaml \
-    --ckpt checkpoints/model.pt \
-    --gt-root data/raw/UCSD_Anomaly_Dataset/UCSDped2/Test
-
-# streaming inference on a single mp4
+# streaming inference on a single mp4 (requires a trained checkpoint)
 python -m src.predict \
     --config configs/default.yaml \
     --ckpt checkpoints/model.pt \
@@ -118,30 +112,24 @@ POST a video chunk:
 ```
 curl -F "file=@sample.mp4" http://localhost:8000/score_clip
 ```
-Response:
+Response shape:
 ```json
 {"score": 0.83, "arch": "c3d", "n_clips": 12, "latency_ms": 215.4, "threshold": 0.6, "is_anomaly": true}
 ```
 
-## Latency
-
-End-to-end p50 on a g5.xlarge (A10G), C3D fp16, clip_len=16, 112x112:
-- decord decode: ~6 ms
-- transform: ~2 ms
-- forward: ~9 ms
-- response: ~1 ms
-
-Total: ~18 ms per clip. Sustains ~55 fps streaming at stride=8. Triton path is documented in `deploy/README.md` if you need higher concurrency.
+Inference runs plain fp32 through the standard PyTorch forward. No latency or throughput benchmark is included in this repo.
 
 ## Deploy
 
-ECS Fargate behind an ALB. Image pushed to ECR. Task def in `deploy/aws_ecs_task.json` (replace `ACCOUNT_ID`). CloudWatch logs at `/ecs/video-anomaly`.
+`deploy/aws_ecs_task.json` is a starter Fargate task definition for CPU serving; ECR image push steps are in `deploy/README.md`. Running the CUDA image on Fargate would fall back to CPU (Fargate does not expose GPUs); for GPU-backed serving use an ECS EC2 launch type or a managed inference platform.
 
 ## Tests
 
 ```
 pytest -q
 ```
+
+`tests/test_data.py` and `tests/test_model.py` cover the transform shape and a model forward pass. `tests/test_api.py` covers the FastAPI startup path.
 
 ## License
 

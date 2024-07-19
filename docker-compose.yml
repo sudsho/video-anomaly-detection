@@ -5,8 +5,6 @@ services:
     build: .
     image: video-anomaly:dev
     container_name: vad-api
-    env_file:
-      - .env
     environment:
       - VAD_CONFIG=configs/default.yaml
       - VAD_CKPT=/app/checkpoints/model.pt

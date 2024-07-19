@@ -47,22 +47,11 @@ def score_clips(model, loader, device: str, is_ae: bool) -> List[dict]:
     return out
 
 
-def smooth(arr: np.ndarray, window: int = 5) -> np.ndarray:
-    """Centered moving average. Stabilizes frame scores at clip boundaries."""
-    if window <= 1:
-        return arr
-    pad = window // 2
-    padded = np.pad(arr, (pad, pad), mode="edge")
-    kernel = np.ones(window, dtype=arr.dtype) / window
-    return np.convolve(padded, kernel, mode="valid")
-
-
 def aggregate_to_frames(
     clip_scores: List[dict],
     clip_len: int,
     n_frames_per_video: Dict[str, int],
     agg: str = "max",
-    smooth_window: int = 1,
 ) -> Dict[str, np.ndarray]:
     """Map per-clip scores back onto per-frame scores."""
     buckets: Dict[str, List[List[float]]] = {}
@@ -84,7 +73,7 @@ def aggregate_to_frames(
                 arr[i] = max(vals)
             else:
                 arr[i] = float(np.mean(vals))
-        out[vid] = smooth(arr, window=smooth_window) if smooth_window > 1 else arr
+        out[vid] = arr
     return out
 
 
