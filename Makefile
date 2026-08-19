@@ -1,9 +1,13 @@
-.PHONY: install test train eval serve streamlit lint docker-build docker-up clean
+.PHONY: install smoke test train eval serve streamlit lint docker-build docker-up clean
 
 PY ?= python
 
 install:
 	pip install -r requirements.txt
+
+# Tiny-CPU offline smoke: synthetic clips + tiny ConvAE3D, no GPU/download/decord.
+smoke:
+	$(PY) scripts/smoke.py
 
 test:
 	pytest -q

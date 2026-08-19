@@ -68,6 +68,7 @@ video-anomaly-detection/
     predict.py        # streaming inference cli
     api/main.py       # FastAPI /score_clip
   streamlit_app.py    # demo: upload video, see clip score
+  scripts/smoke.py    # tiny-CPU offline smoke (synthetic clips, no GPU/download)
   notebooks/eda.ipynb
   tests/
   deploy/             # ECS task def + notes
@@ -80,7 +81,47 @@ video-anomaly-detection/
   LICENSE
 ```
 
-## Quick start
+## Quick start (tiny-CPU smoke, no GPU/download)
+
+You can verify the pipeline end to end in about half a minute on a CPU, with no
+dataset download and no GPU. `scripts/smoke.py` builds tiny SYNTHETIC video
+clips (normal = smooth low-frequency footage, anomalous = a bright blob + noise
+injected into a segment), trains the real `ConvAE3D` autoencoder for a few steps
+on normal clips only, then scores normal vs anomalous clips and computes a
+frame-level ROC-AUC using the same `src.eval` code used for real datasets. No
+`decord`, no OpenCV, no AWS.
+
+```bash
+python scripts/smoke.py      # or: make smoke
+```
+
+Real output:
+
+```
+== video-anomaly-detection tiny-CPU smoke ==
+device=cpu clip=3x8x32x32 train_videos=6 steps=80
+train clips: (30, 3, 8, 32, 32)
+model=ConvAE3D params=1,440,195
+  step   0  recon_loss 0.21284
+  step  20  recon_loss 0.01786
+  step  40  recon_loss 0.00962
+  step  60  recon_loss 0.00754
+  step  79  recon_loss 0.00293
+-- results --
+recon_loss: first 0.21284 -> last 0.00293
+clip recon-error  normal_mean 0.0045  anomaly_mean 0.0451  (ratio 10.0x)
+frame ROC-AUC (synthetic): 1.000
+SMOKE OK
+```
+
+The reconstruction loss drops, anomalous clips score about 10x higher than
+normal, and the synthetic frame-AUC is 1.0. This only proves the code path
+works. The headline task (surveillance-grade anomaly detection on UCSD Ped2 /
+ShanghaiTech, with the C3D / I3D-lite / ConvAE3D heads and the latencies quoted
+for real deployment) needs a GPU and the real datasets, which are not downloaded
+here. The AUC above is on synthetic toy clips, not a benchmark number.
+
+## Full pipeline (needs GPU + real data)
 
 ```bash
 make install
@@ -129,7 +170,7 @@ Inference runs plain fp32 through the standard PyTorch forward. No latency or th
 pytest -q
 ```
 
-`tests/test_data.py` and `tests/test_model.py` cover the transform shape and a model forward pass. `tests/test_api.py` covers the FastAPI startup path.
+`tests/test_data.py` and `tests/test_model.py` cover the transform shape and a model forward pass. `tests/test_api.py` covers the FastAPI startup path. `tests/test_smoke.py` is a fast offline check that the `ConvAE3D` autoencoder trains on synthetic clips and reconstructs anomalies worse than normal footage (the mechanism `scripts/smoke.py` runs at full length).
 
 ## License
 

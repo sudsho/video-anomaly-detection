@@ -22,13 +22,23 @@ class ClipTransform:
 
     def __call__(self, clip_thwc: np.ndarray) -> torch.Tensor:
         # clip_thwc: (T, H, W, 3) uint8
-        import cv2
+        try:
+            import cv2
 
-        T = clip_thwc.shape[0]
-        out = np.zeros((T, self.size, self.size, 3), dtype=np.uint8)
-        for i in range(T):
-            out[i] = cv2.resize(clip_thwc[i], (self.size, self.size))
-        x = torch.from_numpy(out).float() / 255.0
-        x = x.permute(3, 0, 1, 2).contiguous()  # (C, T, H, W)
+            T = clip_thwc.shape[0]
+            out = np.zeros((T, self.size, self.size, 3), dtype=np.uint8)
+            for i in range(T):
+                out[i] = cv2.resize(clip_thwc[i], (self.size, self.size))
+            x = torch.from_numpy(out).float() / 255.0
+            x = x.permute(3, 0, 1, 2).contiguous()  # (C, T, H, W)
+        except ModuleNotFoundError:
+            # cv2 is optional; fall back to a pure-torch bilinear resize so the
+            # transform works in environments without OpenCV (offline smoke,
+            # minimal deploys). Numerically close to cv2.resize for our use.
+            x = torch.from_numpy(np.ascontiguousarray(clip_thwc)).float() / 255.0
+            x = x.permute(3, 0, 1, 2).contiguous()  # (C, T, H, W)
+            x = torch.nn.functional.interpolate(
+                x, size=(self.size, self.size), mode="bilinear", align_corners=False
+            )
         x = (x - self.mean) / self.std
         return x
